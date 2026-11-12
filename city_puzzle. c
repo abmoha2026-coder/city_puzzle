@@ -1,0 +1,183 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <stdbool.h>
+#include <string.h>
+
+#define MAX_SIZE 20
+
+typedef struct {
+    int grid[MAX_SIZE][MAX_SIZE];
+    int player_pos[2];
+    int target_pos[2];
+    float difficulty;
+    int size;
+} Puzzle;
+
+Puzzle generate_puzzle(float difficulty) {
+    Puzzle p;
+    p.difficulty = difficulty;
+    p.size = 5 + (int)(difficulty * 10);
+    if (p.size > MAX_SIZE) p.size = MAX_SIZE;
+
+    // Initialize grid to 0 (empty)
+    for (int r = 0; r < p.size; r++) {
+        for (int c = 0; c < p.size; c++) {
+            p.grid[r][c] = 0;
+        }
+    }
+
+    // Place walls (obstacles)
+    int num_walls = (int)(p.size * p.size * (0.1 + difficulty * 0.3));
+    for (int i = 0; i < num_walls; i++) {
+        int r = rand() % p.size;
+        int c = rand() % p.size;
+        p.grid[r][c] = 1;  // Wall
+    }
+
+    // Place player and target
+    int player_r, player_c, target_r, target_c;
+    do {
+        player_r = rand() % p.size;
+        player_c = rand() % p.size;
+    } while (p.grid[player_r][player_c] != 0);
+    p.player_pos[0] = player_r;
+    p.player_pos[1] = player_c;
+    p.grid[player_r][player_c] = 2;  // Player
+
+    do {
+        target_r = rand() % p.size;
+        target_c = rand() % p.size;
+    } while (p.grid[target_r][target_c] != 0 || (target_r == player_r && target_c == player_c));
+    p.target_pos[0] = target_r;
+    p.target_pos[1] = target_c;
+    p.grid[target_r][target_c] = 3;  // Target
+
+    return p;
+}
+
+bool is_solvable(Puzzle *p) {
+    bool visited[MAX_SIZE][MAX_SIZE] = {false};
+    int queue[MAX_SIZE * MAX_SIZE][2];
+    int front = 0, rear = 0;
+    queue[rear][0] = p->player_pos[0];
+    queue[rear][1] = p->player_pos[1];
+    rear++;
+    visited[p->player_pos[0]][p->player_pos[1]] = true;
+
+    int dr[] = {-1, 1, 0, 0};
+    int dc[] = {0, 0, -1, 1};
+
+    while (front < rear) {
+        int r = queue[front][0];
+        int c = queue[front][1];
+        front++;
+
+        if (r == p->target_pos[0] && c == p->target_pos[1]) {
+            return true;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int nr = r + dr[i];
+            int nc = c + dc[i];
+            if (nr >= 0 && nr < p->size && nc >= 0 && nc < p->size &&
+                !visited[nr][nc] && p->grid[nr][nc] != 1) {
+                visited[nr][nc] = true;
+                queue[rear][0] = nr;
+                queue[rear][1] = nc;
+                rear++;
+            }
+        }
+    }
+    return false;
+}
+
+bool move_player(Puzzle *p, char direction) {
+    int r = p->player_pos[0];
+    int c = p->player_pos[1];
+    int new_r = r, new_c = c;
+
+    switch (direction) {
+        case 'W': new_r--; break;
+        case 'S': new_r++; break;
+        case 'A': new_c--; break;
+        case 'D': new_c++; break;
+        default: return false;
+    }
+
+    if (new_r >= 0 && new_r < p->size && new_c >= 0 && new_c < p->size && p->grid[new_r][new_c] != 1) {
+        p->grid[r][c] = 0;
+        p->grid[new_r][new_c] = 2;
+        p->player_pos[0] = new_r;
+        p->player_pos[1] = new_c;
+        return true;
+    }
+    return false;
+}
+
+bool check_win(Puzzle *p) {
+    return (p->player_pos[0] == p->target_pos[0] && p->player_pos[1] == p->target_pos[1]);
+}
+
+void print_grid(Puzzle *p) {
+    for (int r = 0; r < p->size; r++) {
+        for (int c = 0; c < p->size; c++) {
+            if (p->grid[r][c] == 0) printf(".");
+            else if (p->grid[r][c] == 1) printf("#");
+            else if (p->grid[r][c] == 2) printf("P");
+            else if (p->grid[r][c] == 3) printf("T");
+        }
+        printf("\n");
+    }
+    printf("Player: (%d, %d), Target: (%d, %d)\n", p->player_pos[0], p->player_pos[1], p->target_pos[0], p->target_pos[1]);
+    printf("Difficulty: %.1f\n", p->difficulty);
+}
+
+void adjust_difficulty(Puzzle *p, float time_taken, int moves_used) {
+    if (time_taken < 5.0 && moves_used < 10) {
+        p->difficulty = (p->difficulty + 0.1 > 1.0) ? 1.0 : p->difficulty + 0.1;
+    } else if (time_taken > 30.0 || moves_used > 50) {
+        p->difficulty = (p->difficulty - 0.1 < 0.0) ? 0.0 : p->difficulty - 0.1;
+    }
+    *p = generate_puzzle(p->difficulty);
+}
+
+int main() {
+    srand(time(NULL));
+    Puzzle p = generate_puzzle(0.5);
+    printf("Welcome to the Puzzle Game! Move with WASD. Reach the target (T).\n");
+    print_grid(&p);
+
+    while (1) {
+        char move[2];
+        printf("Your move (WASD, Q to quit): ");
+        scanf("%1s", move);
+
+        if (move[0] == 'Q') break;
+        if (move_player(&p, move[0])) {
+            print_grid(&p);
+            if (check_win(&p)) {
+                printf("You win!\n");
+                float time_taken;
+                int moves_used;
+                printf("Time taken (seconds): ");
+                scanf("%f", &time_taken);
+                printf("Moves used: ");
+                scanf("%d", &moves_used);
+                adjust_difficulty(&p, time_taken, moves_used);
+                p = generate_puzzle(p.difficulty);  // New puzzle
+                print_grid(&p);
+            }
+        } else {
+            printf("Invalid move!\n");
+        }
+    }
+    return 0;
+}
+
+#### *** how to run in c ***####
+
+  
+
+gcc puzzle_game.c -o puzzle_game
+./puzzle_game
